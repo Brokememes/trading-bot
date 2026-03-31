@@ -1,0 +1,103 @@
+{
+  "database_path": "data/basis_arb.sqlite",
+  "execute_trades": false,
+  "dry_run": true,
+  "stale_after_ms": 3000,
+  "mt5": {
+    "path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe",
+    "login": null,
+    "password": "REPLACE_ME",
+    "server": "REPLACE_ME",
+    "initialize_timeout_ms": 5000,
+    "poll_interval_ms": 200,
+    "deviation_points": 20,
+    "magic": 260330
+  },
+  "telegram": {
+    "enabled": false,
+    "bot_token": "REPLACE_ME",
+    "chat_id": "REPLACE_ME"
+  },
+  "futures_provider": {
+    "kind": "polygon",
+    "api_key": "REPLACE_ME",
+    "polygon_url": "wss://socket.polygon.io/futures",
+    "ib_host": "127.0.0.1",
+    "ib_port": 7497,
+    "ib_client_id": 27
+  },
+  "pairs": [
+    {
+      "name": "EURUSD",
+      "spot_symbol": "EURUSD",
+      "futures_symbol": "6EM26",
+      "pip_size": 0.0001,
+      "threshold_pips": 1.5,
+      "normalization": "identity",
+      "lot": 0.01,
+      "cooldown_seconds": 15,
+      "close_tolerance_pips": 0.2,
+      "ib_contract": {
+        "symbol": "EUR",
+        "exchange": "CME",
+        "currency": "USD",
+        "lastTradeDateOrContractMonth": "202606",
+        "localSymbol": "6EM6"
+      }
+    },
+    {
+      "name": "GBPUSD",
+      "spot_symbol": "GBPUSD",
+      "futures_symbol": "6BM26",
+      "pip_size": 0.0001,
+      "threshold_pips": 1.5,
+      "normalization": "identity",
+      "lot": 0.01,
+      "cooldown_seconds": 15,
+      "close_tolerance_pips": 0.2,
+      "ib_contract": {
+        "symbol": "GBP",
+        "exchange": "CME",
+        "currency": "USD",
+        "lastTradeDateOrContractMonth": "202606",
+        "localSymbol": "6BM6"
+      }
+    },
+    {
+      "name": "XAUUSD",
+      "spot_symbol": "XAUUSD",
+      "futures_symbol": "GCM26",
+      "pip_size": 0.01,
+      "threshold_pips": 50.0,
+      "normalization": "identity",
+      "lot": 0.01,
+      "cooldown_seconds": 20,
+      "close_tolerance_pips": 5.0,
+      "ib_contract": {
+        "symbol": "GC",
+        "exchange": "COMEX",
+        "currency": "USD",
+        "lastTradeDateOrContractMonth": "202606",
+        "localSymbol": "GCM6"
+      }
+    },
+    {
+      "name": "USDJPY",
+      "spot_symbol": "USDJPY",
+      "futures_symbol": "6JM26",
+      "pip_size": 0.01,
+      "threshold_pips": 1.5,
+      "normalization": "invert",
+      "lot": 0.01,
+      "cooldown_seconds": 15,
+      "close_tolerance_pips": 0.2,
+      "ib_contract": {
+        "symbol": "JPY",
+        "exchange": "CME",
+        "currency": "USD",
+        "lastTradeDateOrContractMonth": "202606",
+        "localSymbol": "6JM6"
+      }
+    }
+  ]
+}

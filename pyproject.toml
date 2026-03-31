@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fx-edge-lab"
+version = "0.1.0"
+description = "Futures-vs-spot basis arbitrage detector for MT5 and CME-linked feeds."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "websockets>=15,<16",
+]
+
+[project.optional-dependencies]
+fx-live = [
+    "MetaTrader5>=5.0",
+    "ibapi>=9.81.1",
+]
+
+[project.scripts]
+fx-edge-lab = "fx_edge_lab.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]

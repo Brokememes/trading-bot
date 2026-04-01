@@ -150,6 +150,21 @@ def load_crypto_settings(config_path: str | Path | None) -> CryptoResearchSettin
         ),
         reverse_spot_borrow_apy=float(data.get("reverse_spot_borrow_apy", settings.reverse_spot_borrow_apy)),
         include_funding_in_pnl=bool(data.get("include_funding_in_pnl", settings.include_funding_in_pnl)),
+        strategy_lookback_days=int(data.get("strategy_lookback_days", settings.strategy_lookback_days)),
+        funding_divergence_entry_rate=float(
+            data.get("funding_divergence_entry_rate", settings.funding_divergence_entry_rate)
+        ),
+        funding_divergence_exit_rate=float(
+            data.get("funding_divergence_exit_rate", settings.funding_divergence_exit_rate)
+        ),
+        funding_flip_hold_ms=int(data.get("funding_flip_hold_ms", settings.funding_flip_hold_ms)),
+        liquidation_oi_drop_pct=float(data.get("liquidation_oi_drop_pct", settings.liquidation_oi_drop_pct)),
+        liquidation_price_move_pct_min=float(
+            data.get("liquidation_price_move_pct_min", settings.liquidation_price_move_pct_min)
+        ),
+        liquidation_snapback_hold_ms=int(
+            data.get("liquidation_snapback_hold_ms", settings.liquidation_snapback_hold_ms)
+        ),
         pairs=pairs,
     )
 

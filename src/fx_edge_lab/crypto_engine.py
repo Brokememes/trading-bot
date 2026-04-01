@@ -9,6 +9,7 @@ from .crypto_models import (
     CryptoResearchSettings,
     FundingSnapshot,
     MarketTrade,
+    OpenInterestSnapshot,
     OrderBookSnapshot,
     PaperOrder,
     PendingMarkout,
@@ -43,6 +44,7 @@ class CryptoResearchEngine:
         self._latest_funding: dict[str, FundingSnapshot] = {}
         self._last_quote_write: dict[tuple[str, str, str], datetime] = {}
         self._last_basis_write: dict[str, datetime] = {}
+        self._last_open_interest_write: dict[str, datetime] = {}
         self._last_signal_at: dict[str, datetime] = {}
         self._open_orders: list[PaperOrder] = []
         self._pending_markouts: list[PendingMarkout] = []
@@ -96,11 +98,19 @@ class CryptoResearchEngine:
         self._maybe_fill_orders(trade)
 
     def on_funding(self, snapshot: FundingSnapshot) -> None:
-        self._latest_funding[snapshot.pair] = snapshot
+        if snapshot.venue == "bybit":
+            self._latest_funding[snapshot.pair] = snapshot
         self._storage.log_funding(snapshot)
         observation = self._write_basis_if_due(snapshot.pair, snapshot.timestamp, force=True)
         if observation is not None:
             self._on_basis_observation(self._pairs_by_name[snapshot.pair], observation)
+
+    def on_open_interest(self, snapshot: OpenInterestSnapshot) -> None:
+        previous = self._last_open_interest_write.get(snapshot.pair)
+        if previous is not None and snapshot.timestamp <= previous:
+            return
+        self._storage.log_open_interest(snapshot)
+        self._last_open_interest_write[snapshot.pair] = snapshot.timestamp
 
     def summary(self) -> dict[str, int]:
         tables = {
@@ -110,6 +120,7 @@ class CryptoResearchEngine:
             "basis": "crypto_basis",
             "signals": "crypto_signals",
             "spreads": "crypto_spread_positions",
+            "open_interest": "crypto_open_interest",
         }
         summary: dict[str, int] = {}
         for key, table in tables.items():

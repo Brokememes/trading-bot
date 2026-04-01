@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from .connectors.binance_public import BinanceSpotFeed
 from .connectors.bybit_public import BybitLinearFeed
 from .crypto_engine import CryptoResearchEngine
-from .crypto_models import FundingSnapshot
+from .crypto_models import FundingSnapshot, OpenInterestSnapshot
 from .crypto_settings import load_crypto_settings
 from .crypto_storage import CryptoSQLiteStorage
 
@@ -78,13 +78,15 @@ async def _funding_poll_loop(settings, engine: CryptoResearchEngine, stop_event:
     while not stop_event.is_set():
         for pair in settings.pairs:
             try:
-                snapshot = await asyncio.to_thread(
-                    _fetch_bybit_funding_snapshot,
+                bybit_snapshot, binance_snapshot, open_interest_snapshot = await asyncio.to_thread(
+                    _fetch_market_state_snapshots,
                     pair.name,
                     pair.bybit_linear_symbol,
                     settings.funding_history_limit,
                 )
-                engine.on_funding(snapshot)
+                engine.on_funding(bybit_snapshot)
+                engine.on_funding(binance_snapshot)
+                engine.on_open_interest(open_interest_snapshot)
             except Exception as exc:  # pragma: no cover - live path
                 print(f"[FUNDING] {pair.name} fetch failed: {exc}")
         try:
@@ -94,6 +96,16 @@ async def _funding_poll_loop(settings, engine: CryptoResearchEngine, stop_event:
             )
         except asyncio.TimeoutError:
             continue
+
+def _fetch_market_state_snapshots(
+    pair_name: str,
+    symbol: str,
+    history_limit: int,
+) -> tuple[FundingSnapshot, FundingSnapshot, OpenInterestSnapshot]:
+    bybit_snapshot = _fetch_bybit_funding_snapshot(pair_name, symbol, history_limit)
+    binance_snapshot = _fetch_binance_funding_snapshot(pair_name, history_limit)
+    open_interest_snapshot = _fetch_binance_open_interest_snapshot(pair_name)
+    return bybit_snapshot, binance_snapshot, open_interest_snapshot
 
 
 def _fetch_bybit_funding_snapshot(pair_name: str, symbol: str, history_limit: int) -> FundingSnapshot:
@@ -125,6 +137,62 @@ def _fetch_bybit_funding_snapshot(pair_name: str, symbol: str, history_limit: in
         next_funding_time=next_funding_time,
         basis_rate=_float_or_none(ticker.get("basisRate")),
         basis_value=_float_or_none(ticker.get("basis")),
+    )
+
+
+def _fetch_binance_funding_snapshot(pair_name: str, history_limit: int) -> FundingSnapshot:
+    premium_payload = _fetch_json(
+        "https://fapi.binance.com/fapi/v1/premiumIndex",
+        {"symbol": pair_name},
+    )
+    history_payload = _fetch_json(
+        "https://fapi.binance.com/fapi/v1/fundingRate",
+        {"symbol": pair_name, "limit": history_limit},
+    )
+    funding_values = [
+        float(item["fundingRate"])
+        for item in history_payload
+        if isinstance(item, dict) and item.get("fundingRate") not in {None, ""}
+    ]
+    average_funding = (sum(funding_values) / len(funding_values)) if funding_values else None
+    next_funding_time = None
+    next_funding_raw = premium_payload.get("nextFundingTime")
+    if next_funding_raw not in {None, "", "0"}:
+        next_funding_time = datetime.fromtimestamp(int(next_funding_raw) / 1000.0, tz=timezone.utc)
+    snapshot_time = datetime.now(tz=timezone.utc)
+    payload_time = premium_payload.get("time")
+    if payload_time not in {None, "", "0"}:
+        snapshot_time = datetime.fromtimestamp(int(payload_time) / 1000.0, tz=timezone.utc)
+    return FundingSnapshot(
+        pair=pair_name,
+        venue="binance",
+        symbol=pair_name,
+        timestamp=snapshot_time,
+        current_funding_rate=_float_or_none(premium_payload.get("lastFundingRate")),
+        average_funding_rate=average_funding,
+        next_funding_time=next_funding_time,
+        basis_rate=None,
+        basis_value=None,
+    )
+
+
+def _fetch_binance_open_interest_snapshot(pair_name: str) -> OpenInterestSnapshot:
+    history_payload = _fetch_json(
+        "https://fapi.binance.com/futures/data/openInterestHist",
+        {"symbol": pair_name, "period": "5m", "limit": 1},
+    )
+    if not history_payload:
+        raise ValueError(f"No Binance open interest data returned for {pair_name}")
+    latest = history_payload[-1]
+    timestamp = datetime.fromtimestamp(int(latest["timestamp"]) / 1000.0, tz=timezone.utc)
+    return OpenInterestSnapshot(
+        pair=pair_name,
+        venue="binance",
+        symbol=pair_name,
+        timestamp=timestamp,
+        interval="5m",
+        open_interest=float(latest["sumOpenInterest"]),
+        open_interest_value=_float_or_none(latest.get("sumOpenInterestValue")),
     )
 
 

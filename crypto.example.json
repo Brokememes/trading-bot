@@ -22,6 +22,13 @@
   "pre_funding_trend_window_ms": 600000,
   "reverse_spot_borrow_apy": 0.10,
   "include_funding_in_pnl": false,
+  "strategy_lookback_days": 7,
+  "funding_divergence_entry_rate": 0.0005,
+  "funding_divergence_exit_rate": 0.0001,
+  "funding_flip_hold_ms": 14400000,
+  "liquidation_oi_drop_pct": 0.02,
+  "liquidation_price_move_pct_min": 0.001,
+  "liquidation_snapback_hold_ms": 1800000,
   "pairs": [
     {
       "name": "BTCUSDT",

@@ -5,7 +5,14 @@ import sqlite3
 import threading
 from pathlib import Path
 
-from .crypto_models import BasisObservation, FundingSnapshot, MarketTrade, OrderBookSnapshot, SignalEvent
+from .crypto_models import (
+    BasisObservation,
+    FundingSnapshot,
+    MarketTrade,
+    OpenInterestSnapshot,
+    OrderBookSnapshot,
+    SignalEvent,
+)
 
 
 class CryptoSQLiteStorage:
@@ -69,6 +76,17 @@ class CryptoSQLiteStorage:
                     next_funding_time TEXT,
                     basis_rate REAL,
                     basis_value REAL
+                );
+
+                CREATE TABLE IF NOT EXISTS crypto_open_interest (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    pair TEXT NOT NULL,
+                    venue TEXT NOT NULL,
+                    symbol TEXT NOT NULL,
+                    interval TEXT NOT NULL,
+                    open_interest REAL NOT NULL,
+                    open_interest_value REAL
                 );
 
                 CREATE TABLE IF NOT EXISTS crypto_basis (
@@ -189,6 +207,9 @@ class CryptoSQLiteStorage:
 
                 CREATE INDEX IF NOT EXISTS idx_crypto_funding_pair_timestamp
                 ON crypto_funding(pair, timestamp);
+
+                CREATE INDEX IF NOT EXISTS idx_crypto_open_interest_pair_timestamp
+                ON crypto_open_interest(pair, timestamp);
                 """
             )
             self._connection.commit()
@@ -266,6 +287,26 @@ class CryptoSQLiteStorage:
                     None if snapshot.next_funding_time is None else snapshot.next_funding_time.isoformat(),
                     snapshot.basis_rate,
                     snapshot.basis_value,
+                ),
+            )
+            self._connection.commit()
+
+    def log_open_interest(self, snapshot: OpenInterestSnapshot) -> None:
+        with self._lock:
+            self._connection.execute(
+                """
+                INSERT INTO crypto_open_interest (
+                    timestamp, pair, venue, symbol, interval, open_interest, open_interest_value
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot.timestamp.isoformat(),
+                    snapshot.pair,
+                    snapshot.venue,
+                    snapshot.symbol,
+                    snapshot.interval,
+                    snapshot.open_interest,
+                    snapshot.open_interest_value,
                 ),
             )
             self._connection.commit()

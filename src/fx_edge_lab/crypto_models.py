@@ -55,6 +55,13 @@ class CryptoResearchSettings:
     pre_funding_trend_window_ms: int = 600000
     reverse_spot_borrow_apy: float = 0.10
     include_funding_in_pnl: bool = False
+    strategy_lookback_days: int = 7
+    funding_divergence_entry_rate: float = 0.0005
+    funding_divergence_exit_rate: float = 0.0001
+    funding_flip_hold_ms: int = 14400000
+    liquidation_oi_drop_pct: float = 0.02
+    liquidation_price_move_pct_min: float = 0.001
+    liquidation_snapback_hold_ms: int = 1800000
     pairs: tuple[CryptoPairSettings, ...] = field(default_factory=tuple)
 
 
@@ -129,6 +136,17 @@ class FundingSnapshot:
     next_funding_time: datetime | None
     basis_rate: float | None
     basis_value: float | None
+
+
+@dataclass(frozen=True)
+class OpenInterestSnapshot:
+    pair: str
+    venue: str
+    symbol: str
+    timestamp: datetime
+    interval: str
+    open_interest: float
+    open_interest_value: float | None
 
 
 @dataclass(frozen=True)

@@ -20,6 +20,7 @@ from .crypto_insights import (
 from .crypto_pnl import cost_assumptions
 from .crypto_settings import FEE_PRESETS, _resolve_fee_settings
 from .crypto_storage import CryptoSQLiteStorage
+from .crypto_strategy_lab import build_strategy_lab
 
 
 def serve_crypto_dashboard(
@@ -96,6 +97,7 @@ def _dashboard_payload(database_path: str, settings) -> dict:
             "quotes": int(storage.fetch_all("SELECT COUNT(*) AS n FROM crypto_quotes")[0]["n"]),
             "trades": int(storage.fetch_all("SELECT COUNT(*) AS n FROM crypto_trades")[0]["n"]),
             "funding": int(storage.fetch_all("SELECT COUNT(*) AS n FROM crypto_funding")[0]["n"]),
+            "open_interest": int(storage.fetch_all("SELECT COUNT(*) AS n FROM crypto_open_interest")[0]["n"]),
             "basis": int(storage.fetch_all("SELECT COUNT(*) AS n FROM crypto_basis")[0]["n"]),
             "signals": count_strategy_signals(storage),
             "spreads": int(storage.fetch_all("SELECT COUNT(*) AS n FROM crypto_spread_positions")[0]["n"]),
@@ -123,6 +125,12 @@ def _dashboard_payload(database_path: str, settings) -> dict:
         )
         funding_clock = pre_funding_state(reference_time, settings)
         spike_forensics = spike_forensics_rows(storage, settings, lookback_days=7, threshold_bps=60.0)[:50]
+        strategy_lab = build_strategy_lab(
+            storage,
+            settings,
+            latest_basis=latest_basis,
+            lookback_days=settings.strategy_lookback_days,
+        )
     finally:
         storage.close()
 
@@ -148,6 +156,7 @@ def _dashboard_payload(database_path: str, settings) -> dict:
         "recent_positions": positions[:50],
         "regime_history": regime_history,
         "spike_forensics": spike_forensics,
+        "strategy_lab": strategy_lab,
         "what_if_summary": what_if["summary_rows"],
         "what_if_trades": what_if["trade_rows"][:50],
         "what_if_equity": {
@@ -293,6 +302,8 @@ select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(148
 <div class="stamp" id="stamp">Loading...</div><div class="grid" id="counts"></div>
 <div class="section card"><h2>Scenario Switcher</h2><div class="grid"><div><div class="label">Fee Preset</div><select id="scenario-fee-preset"></select></div><div><div class="label">Exit Mode</div><select id="scenario-exit-mode"></select></div></div></div>
 <div class="section card"><h2>Aggregate Cost Assumptions</h2><div class="grid" id="costs"></div></div>
+<div class="section card"><h2>Strategy Leadership</h2><div class="grid" id="strategy-primary"></div><div class="table-wrap" id="strategy-summary"></div></div>
+<div class="section card"><h2>Strategy Live Board</h2><div class="table-wrap" id="strategy-live"></div></div>
 <div class="section card"><h2>Pre-Funding Alert Mode</h2><div class="grid" id="funding-clock"></div></div>
 <div class="section card"><h2>Live Regime And Signal Board</h2><div class="table-wrap" id="live-signals"></div></div>
 <div class="section card"><h2>Latest Basis Snapshot</h2><div class="table-wrap" id="basis"></div></div>
@@ -304,6 +315,7 @@ select{width:100%;padding:10px 12px;border-radius:10px;border:1px solid rgba(148
 <div class="section card"><h2>Recent Signals</h2><div class="table-wrap" id="recent-signals"></div></div>
 <div class="section card"><h2>Per-Trade Spread Blotter</h2><div class="table-wrap" id="recent-positions"></div></div>
 <div class="section card"><h2>Historical What-If Trades</h2><div class="table-wrap" id="what-if-trades"></div></div>
+<div class="section card"><h2>Recent Strategy Trades</h2><div class="table-wrap" id="strategy-trades"></div></div>
 </div>
 <script>
 const fmt=(v,d=2)=>v===null||v===undefined?'n/a':Number(v).toFixed(d),pct=v=>v===null||v===undefined?'n/a':(Number(v)*100).toFixed(2)+'%',score=v=>v===null||v===undefined?'n/a':Number(v).toFixed(2),cls=v=>(v??0)>=0?'pos':'neg',stateCls=v=>v==='CONTANGO'?'pos':(v==='BACKWARDATION'?'neg':'warn'),mins=v=>v===null||v===undefined?'n/a':fmt(v/60000,1),secs=v=>v===null||v===undefined?'n/a':fmt(v/1000,0),yesno=v=>v?'ON':'OFF';
@@ -315,7 +327,11 @@ function query(){const q=new URLSearchParams();if(scenario.fee_preset)q.set('fee
 function bindScenario(p){if(scenarioLoaded)return;const fee=document.getElementById('scenario-fee-preset');const exit=document.getElementById('scenario-exit-mode');fee.innerHTML=p.scenario_options.fee_presets.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');exit.innerHTML=p.scenario_options.exit_modes.map(o=>`<option value="${o.value}">${o.label}</option>`).join('');scenario.fee_preset=p.cost_assumptions.fee_preset;scenario.exit_mode=p.cost_assumptions.exit_mode;fee.value=scenario.fee_preset;exit.value=scenario.exit_mode;fee.addEventListener('change',()=>{scenario.fee_preset=fee.value;refresh()});exit.addEventListener('change',()=>{scenario.exit_mode=exit.value;refresh()});scenarioLoaded=true}
 async function refresh(){const p=await fetch(query()).then(r=>r.json());bindScenario(p);document.getElementById('stamp').textContent='Updated '+new Date().toLocaleTimeString();
 document.getElementById('counts').innerHTML=Object.entries(p.counts).map(([k,v])=>`<div class="card"><div class="label">${k}</div><div class="value">${v}</div></div>`).join('');
-document.getElementById('costs').innerHTML=[['Fee Preset',p.cost_assumptions.fee_preset],['Exit Mode',p.cost_assumptions.exit_mode],['Entry Cost (bps)',fmt(p.cost_assumptions.maker_entry_fee_bps)],['Exit Fee (bps)',fmt(p.cost_assumptions.exit_fee_bps)],['Exit Slippage (bps)',fmt(p.cost_assumptions.exit_slippage_bps)],['Borrow APY',pct(p.cost_assumptions.reverse_spot_borrow_apy)],['Funding In PnL',p.cost_assumptions.include_funding_in_pnl?'Yes':'No']].map(([k,v])=>`<div class="card"><div class="label">${k}</div><div class="value">${v}</div></div>`).join('');
+document.getElementById('costs').innerHTML=[['Fee Preset',p.cost_assumptions.fee_preset],['Exit Mode',p.cost_assumptions.exit_mode],['Entry Cost (bps)',fmt(p.cost_assumptions.maker_entry_fee_bps)],['Exit Fee (bps)',fmt(p.cost_assumptions.exit_fee_bps)],['Exit Slippage (bps)',fmt(p.cost_assumptions.exit_slippage_bps)],['Borrow APY',pct(p.cost_assumptions.reverse_spot_borrow_apy)],['Funding Divergence Entry',fmt(p.cost_assumptions.funding_divergence_entry_rate_bps)],['Funding Flip Hold (hr)',fmt(p.cost_assumptions.funding_flip_hold_ms/3600000,2)],['OI Drop Trigger',pct(p.cost_assumptions.liquidation_oi_drop_pct)],['Funding In PnL',p.cost_assumptions.include_funding_in_pnl?'Yes':'No']].map(([k,v])=>`<div class="card"><div class="label">${k}</div><div class="value">${v}</div></div>`).join('');
+const primary=p.strategy_lab.primary_strategy;
+document.getElementById('strategy-primary').innerHTML=primary?[['Primary This Week',primary.label],['Category',primary.category],['Status',primary.status],['Trades',primary.trades],['Win Rate',primary.win_rate===null?'n/a':pct(primary.win_rate)],['EV / Trade',fmt(primary.ev_per_trade_quote,4)]].map(([k,v])=>`<div class="card"><div class="label">${k}</div><div class="value">${v}</div></div>`).join(''):'<p>No strategy leader yet.</p>';
+document.getElementById('strategy-summary').innerHTML=table(p.strategy_lab.summary_rows,[{key:'label',label:'Strategy'},{key:'category',label:'Category'},{key:'status',label:'Status',className:v=>stateCls(v==='ACTIVE'?'CONTANGO':(v==='TRACKING'?'NEUTRAL':'BACKWARDATION'))},{key:'trades',label:'Trades'},{key:'wins',label:'Wins'},{key:'win_rate',label:'Win Rate',render:v=>v===null?'n/a':pct(v)},{key:'gross_pnl_quote',label:'Gross',render:v=>fmt(v,4),className:v=>cls(v)},{key:'net_pnl_quote',label:'Net',render:v=>fmt(v,4),className:v=>cls(v)},{key:'ev_per_trade_quote',label:'EV / Trade',render:v=>fmt(v,4),className:v=>cls(v)},{key:'live_candidates',label:'Live Candidates'},{key:'dominant_regime',label:'Dominant Regime',className:v=>stateCls(v)},{key:'is_primary',label:'Primary',render:v=>yesno(v)}]);
+document.getElementById('strategy-live').innerHTML=table(p.strategy_lab.live_rows,[{key:'strategy_label',label:'Strategy'},{key:'pair',label:'Pair'},{key:'status',label:'Status',className:v=>stateCls(String(v).startsWith('READY')?'CONTANGO':(v==='MONITOR'?'NEUTRAL':'BACKWARDATION'))},{key:'regime',label:'Regime',className:v=>stateCls(v)},{key:'signal_value',label:'Signal',render:v=>fmt(v,2),className:v=>cls(v)},{key:'edge_value',label:'Edge/Score',render:v=>fmt(v,4),className:v=>cls(v)},{key:'notes',label:'Notes'}]);
 document.getElementById('funding-clock').innerHTML=[['Next Funding UTC',p.funding_clock.next_funding_time],['Countdown (min)',mins(p.funding_clock.countdown_ms)],['Pre-Funding Alert',yesno(p.funding_clock.alert_active)],['Alert Window (min)',mins(p.cost_assumptions.pre_funding_window_ms)],['Tier2 Pre-Funding Threshold',fmt(p.cost_assumptions.pre_funding_basis_threshold_bps)],['Duration Filter Samples',p.cost_assumptions.basis_consecutive_samples_required]].map(([k,v])=>`<div class="card"><div class="label">${k}</div><div class="value">${v}</div></div>`).join('');
 document.getElementById('live-signals').innerHTML=table(p.live_signals,[{key:'pair',label:'Pair'},{key:'regime',label:'Regime',className:v=>stateCls(v)},{key:'mode',label:'Mode',className:v=>stateCls(v==='REVERSE_PAPER'?'BACKWARDATION':(v==='ORIGINAL'?'CONTANGO':'NEUTRAL'))},{key:'status',label:'Status',className:v=>stateCls(v)},{key:'premium_bps',label:'Basis (bps)',render:v=>fmt(v),className:v=>cls(v)},{key:'regime_avg_basis_bps',label:'1h Avg Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'basis_trend_10m_bps',label:'10m Trend',render:v=>fmt(v),className:v=>cls(v)},{key:'momentum_bps',label:'3m Momentum',render:v=>fmt(v),className:v=>cls(v)},{key:'current_funding_rate',label:'Funding (bps)',render:v=>v===null||v===undefined?'n/a':fmt(v*10000),className:v=>cls(v)},{key:'active_threshold_bps',label:'Tier1 Threshold',render:v=>fmt(v)},{key:'basis_only_threshold_bps',label:'Tier2 Threshold',render:v=>fmt(v)},{key:'tier1_duration_count',label:'Tier1 Run'},{key:'tier2_duration_count',label:'Tier2 Run'},{key:'pre_funding_alert_active',label:'Pre-Funding',render:v=>yesno(v)},{key:'time_to_next_funding_ms',label:'To Funding (min)',render:v=>mins(v)},{key:'regime_changes_today',label:'Regime Changes Today'},{key:'regime_duration_ms',label:'Regime Age (hr)',render:v=>v===null||v===undefined?'n/a':fmt(v/3600000,2)},{key:'signal_quality_score',label:'Quality Score',render:v=>score(v),className:v=>cls(v)},{key:'signal_quality_band',label:'Band',className:v=>stateCls(v)}]);
 document.getElementById('basis').innerHTML=table(p.latest_basis,[{key:'pair',label:'Pair'},{key:'premium_bps',label:'Premium (bps)',render:v=>fmt(v),className:v=>cls(v)},{key:'spot_mid',label:'Spot Mid',render:v=>fmt(v,4)},{key:'perp_mid',label:'Perp Mid',render:v=>fmt(v,4)},{key:'current_funding_rate',label:'Funding (bps)',render:v=>v===null||v===undefined?'n/a':fmt(v*10000)},{key:'timestamp',label:'Time'}]);
@@ -328,6 +344,8 @@ document.getElementById('what-if-equity').innerHTML=dualCurve(p.what_if_equity);
 document.getElementById('regime-history').innerHTML=regimeCharts(p.regime_history);
 document.getElementById('recent-signals').innerHTML=table(p.recent_signals,[{key:'timestamp',label:'Time'},{key:'pair',label:'Pair'},{key:'side',label:'Side'},{key:'signal_source',label:'Source'},{key:'spread_bps',label:'Basis (bps)',render:v=>fmt(v),className:v=>cls(v)},{key:'threshold',label:'Threshold',render:v=>fmt(v)},{key:'signal_quality_score',label:'Score',render:v=>score(v),className:v=>cls(v)},{key:'signal_quality_band',label:'Band',className:v=>stateCls(v)},{key:'status',label:'Position',className:v=>stateCls(v)}]);
 document.getElementById('recent-positions').innerHTML=table(p.recent_positions,[{key:'timestamp',label:'Entered'},{key:'exit_timestamp',label:'Exited'},{key:'pair',label:'Pair'},{key:'side',label:'Side'},{key:'entry_mode',label:'Mode'},{key:'status',label:'Status',className:v=>stateCls(v)},{key:'entry_basis_bps',label:'Entry Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'live_basis_bps',label:'Current/Exit Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'exit_reason',label:'Exit Reason'},{key:'live_net_without_borrow_quote',label:'Net No Borrow',render:v=>fmt(v,4),className:v=>cls(v)},{key:'live_net_with_borrow_quote',label:'Net With Borrow',render:v=>fmt(v,4),className:v=>cls(v)},{key:'borrow_cost_quote',label:'Borrow',render:v=>fmt(v,4),className:v=>cls(-Math.abs(v||0))}]);
-document.getElementById('what-if-trades').innerHTML=table(p.what_if_trades,[{key:'exit_timestamp',label:'Exit Time'},{key:'pair',label:'Pair'},{key:'side',label:'Side'},{key:'entry_basis_bps',label:'Entry Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'exit_basis_bps',label:'Exit Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'gross_pnl_quote',label:'Gross',render:v=>fmt(v,4),className:v=>cls(v)},{key:'net_without_borrow_quote',label:'Net No Borrow',render:v=>fmt(v,4),className:v=>cls(v)},{key:'net_with_borrow_quote',label:'Net With Borrow',render:v=>fmt(v,4),className:v=>cls(v)},{key:'borrow_cost_quote',label:'Borrow',render:v=>fmt(v,4),className:v=>cls(-Math.abs(v||0))},{key:'exit_reason',label:'Exit Reason'}])}
+document.getElementById('what-if-trades').innerHTML=table(p.what_if_trades,[{key:'exit_timestamp',label:'Exit Time'},{key:'pair',label:'Pair'},{key:'side',label:'Side'},{key:'entry_basis_bps',label:'Entry Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'exit_basis_bps',label:'Exit Basis',render:v=>fmt(v),className:v=>cls(v)},{key:'gross_pnl_quote',label:'Gross',render:v=>fmt(v,4),className:v=>cls(v)},{key:'net_without_borrow_quote',label:'Net No Borrow',render:v=>fmt(v,4),className:v=>cls(v)},{key:'net_with_borrow_quote',label:'Net With Borrow',render:v=>fmt(v,4),className:v=>cls(v)},{key:'borrow_cost_quote',label:'Borrow',render:v=>fmt(v,4),className:v=>cls(-Math.abs(v||0))},{key:'exit_reason',label:'Exit Reason'}]);
+document.getElementById('strategy-trades').innerHTML=table(p.strategy_lab.trade_rows,[{key:'strategy_label',label:'Strategy'},{key:'pair',label:'Pair'},{key:'entry_timestamp',label:'Entry'},{key:'exit_timestamp',label:'Exit'},{key:'side',label:'Side'},{key:'regime',label:'Regime',className:v=>stateCls(v)},{key:'gross_pnl_quote',label:'Gross',render:v=>fmt(v,4),className:v=>cls(v)},{key:'net_pnl_quote',label:'Net',render:v=>fmt(v,4),className:v=>cls(v)},{key:'exit_reason',label:'Exit Reason'}]);
+}
 refresh();setInterval(refresh,2000);
 </script></body></html>"""

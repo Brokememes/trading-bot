@@ -161,10 +161,13 @@ What it captures:
 - Binance spot top-of-book depth snapshots and public trades
 - Bybit linear perpetual top-of-book depth updates and public trades
 - Bybit funding snapshots and recent funding history
+- Binance futures funding snapshots and recent funding history
+- Binance 5-minute open interest history snapshots
 - Cross-venue basis between Binance spot and Bybit perpetual
 - Basis-plus-funding spread signals with adaptive entry thresholds
 - Paper spread positions: long Binance spot and short Bybit perp
 - Live signal quality scoring based on current edge versus modeled fees
+- Multi-strategy research leaderboard for basis carry, funding flips, funding divergence, and liquidation snap-back
 
 New files:
 
@@ -247,6 +250,7 @@ How to use it day to day:
 - Terminal 1 runs `crypto-capture` and stays open to keep collecting live Binance and Bybit data.
 - Terminal 2 runs `crypto-dashboard` and serves a local page backed by the same SQLite database.
 - Your browser shows live counts, the live signal quality board, latest basis, open spread PnL, closed spread performance, a realized net equity curve, recent spread signals, and a per-trade spread blotter.
+- The dashboard also shows a strategy leaderboard that ranks multiple research modules on the same data and fee assumptions.
 - `crypto-analyze` gives you a text summary whenever you want a quick report from the same database.
 - If you want a fresh session, point `database_path` in `crypto.example.json` to a new SQLite file.
 

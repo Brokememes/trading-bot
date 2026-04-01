@@ -45,6 +45,13 @@ def cost_assumptions(settings: CryptoResearchSettings) -> dict[str, float | str 
         "pre_funding_trend_window_ms": settings.pre_funding_trend_window_ms,
         "reverse_spot_borrow_apy": settings.reverse_spot_borrow_apy,
         "include_funding_in_pnl": settings.include_funding_in_pnl,
+        "strategy_lookback_days": settings.strategy_lookback_days,
+        "funding_divergence_entry_rate_bps": settings.funding_divergence_entry_rate * 10_000.0,
+        "funding_divergence_exit_rate_bps": settings.funding_divergence_exit_rate * 10_000.0,
+        "funding_flip_hold_ms": settings.funding_flip_hold_ms,
+        "liquidation_oi_drop_pct": settings.liquidation_oi_drop_pct,
+        "liquidation_price_move_pct_min": settings.liquidation_price_move_pct_min,
+        "liquidation_snapback_hold_ms": settings.liquidation_snapback_hold_ms,
     }
 
 
